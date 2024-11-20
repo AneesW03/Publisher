@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Looper
 import android.view.View
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -18,12 +19,15 @@ import com.google.android.gms.location.Priority
 import com.hivemq.client.mqtt.mqtt5.Mqtt5BlockingClient
 import com.hivemq.client.mqtt.mqtt5.Mqtt5Client
 import java.util.UUID
+import org.json.JSONObject
 
 class PublisherActivity : AppCompatActivity() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationRequest: LocationRequest
     private lateinit var locationCallback: LocationCallback
     private var client: Mqtt5BlockingClient? = null
+    private var isLocationUpdatesEnabled = false
+    private var clientID = ""
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,6 +39,7 @@ class PublisherActivity : AppCompatActivity() {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         client = Mqtt5Client.builder()
@@ -57,34 +62,52 @@ class PublisherActivity : AppCompatActivity() {
             override fun onLocationResult(locationResult: LocationResult) {
                 super.onLocationResult(locationResult)
                 for (location in locationResult.locations) {
-                    val latitude = location.latitude
-                    val longitude = location.longitude
-                    println("Latitude: $latitude, Longitude: $longitude")
-                    val textToSend = "Latitude: $latitude, Longitude: $longitude"
+                    val textToSend = JSONObject().apply {
+                        put("latitude", location.latitude)
+                        put("longitude", location.longitude)
+                        put("id", clientID)
+                        put("timestamp", location.time)
+                    }.toString()
 
                     try{
                         client?.publishWith()?.topic("assignment/location")?.payload(textToSend.toByteArray())?.send()
+                        println(textToSend)
                     } catch (e : Exception){
                         Toast.makeText(this@PublisherActivity, "An error occurred when sending a message to the broker", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
         }
-
     }
 
     override fun onPause() {
         super.onPause()
-        stopLocationUpdates()
+        if (isLocationUpdatesEnabled) {
+            stopLocationUpdates()
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        startLocationUpdates()
+        if (isLocationUpdatesEnabled) {
+            startLocationUpdates()
+        }
     }
 
     @SuppressLint("MissingPermission")
-    fun startLocationUpdates() {
+    private fun startLocationUpdates() {
+        isLocationUpdatesEnabled = true;
+        if (client?.state?.isConnected == false) {
+            try {
+                client?.connect()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@PublisherActivity,
+                    "An error occurred when connecting to broker",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
         fusedLocationClient.requestLocationUpdates(
             locationRequest,
             locationCallback,
@@ -92,13 +115,16 @@ class PublisherActivity : AppCompatActivity() {
         )
     }
 
-    fun stopLocationUpdates() {
-        fusedLocationClient.removeLocationUpdates(locationCallback)
-        try {
-            client?.disconnect()
-        } catch (e:Exception){
-            Toast.makeText(this,"An error occurred when disconnecting from broker", Toast.LENGTH_SHORT).show()
+    private fun stopLocationUpdates() {
+        isLocationUpdatesEnabled = false
+        if (client?.state?.isConnected == true) {
+            try {
+                client?.disconnect()
+            } catch (e:Exception){
+                Toast.makeText(this,"An error occurred when disconnecting from broker", Toast.LENGTH_SHORT).show()
+            }
         }
+        fusedLocationClient.removeLocationUpdates(locationCallback)
     }
 
     fun stopLocationUpdates(view: View) {
@@ -106,6 +132,15 @@ class PublisherActivity : AppCompatActivity() {
     }
 
     fun startLocationUpdates(view: View) {
+        val inputField = findViewById<EditText>(R.id.studentID_Input)
+        val textInput = inputField.text.toString()
+
+        if (textInput.isEmpty()) {
+            Toast.makeText(this, "Please enter a value", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        clientID = textInput
         startLocationUpdates()
     }
 
