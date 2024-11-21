@@ -71,7 +71,7 @@ class PublisherActivity : AppCompatActivity() {
                     }.toString()
 
                     try{
-                        client?.publishWith()?.topic("assignment/location/anees")?.payload(textToSend.toByteArray())?.send()
+                        client?.publishWith()?.topic("assignment/location")?.payload(textToSend.toByteArray())?.send()
                         println(textToSend)
                     } catch (e : Exception){
                         Toast.makeText(this@PublisherActivity, "An error occurred when sending a message to the broker", Toast.LENGTH_SHORT).show()
